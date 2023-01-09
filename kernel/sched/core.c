@@ -36,6 +36,9 @@ DEFINE_TRACE(kperfevents_sched_wait);
 #ifdef CONFIG_OPLUS_FEATURE_GAME_OPT
 #include "../../drivers/oplus/game_opt/game_ctrl.h"
 #endif
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+#include <linux/sched_assist/sched_assist_common.h>
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
@@ -1448,6 +1451,17 @@ static inline void check_class_changed(struct rq *rq, struct task_struct *p,
 void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 {
 	const struct sched_class *class;
+
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	u64 wallclock = sched_clock();
+
+	if (sysctl_uxchain_v2 &&
+		wallclock - rq->curr->get_mmlock_ts < PREEMPT_DISABLE_RWSEM &&
+		rq->curr->get_mmlock &&
+		!(p->flags & PF_WQ_WORKER) && !task_has_rt_policy(p))
+		return;
+#endif
 
 	if (p->sched_class == rq->curr->sched_class) {
 		rq->curr->sched_class->check_preempt_curr(rq, p, flags);
@@ -4019,7 +4033,6 @@ unsigned long long task_sched_runtime(struct task_struct *p)
 }
 
 unsigned int capacity_margin_freq = 1280; /* ~20% margin */
-
 /*
  * This function gets called by the timer code, with HZ frequency.
  * We call it with interrupts disabled.
@@ -4079,7 +4092,9 @@ void scheduler_tick(void)
 		clear_reserved(cpu);
 	rq_unlock(rq, &rf);
 #endif
-
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_SCHED_SPREAD)
+	update_rq_nr_imbalance(cpu);
+#endif
 }
 
 #ifdef CONFIG_NO_HZ_FULL
@@ -4510,6 +4525,10 @@ static void __sched notrace __schedule(bool preempt)
 		}
 		switch_count = &prev->nvcsw;
 	}
+
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+	prev->enqueue_time = rq->clock;
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 
 	next = pick_next_task(rq, prev, &rf);
 	clear_tsk_need_resched(prev);
@@ -7398,6 +7417,9 @@ void __init sched_init_smp(void)
 	cpumask_copy(&current->cpus_requested, cpu_possible_mask);
 	sched_init_granularity();
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+	ux_init_cpu_data();
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 	init_sched_rt_class();
 	init_sched_dl_class();
 
@@ -7439,6 +7461,17 @@ static struct kmem_cache *task_group_cache __read_mostly;
 
 DECLARE_PER_CPU(cpumask_var_t, load_balance_mask);
 DECLARE_PER_CPU(cpumask_var_t, select_idle_mask);
+
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+void set_random_uxchain_v2(void)
+{
+	int rand = 1;
+
+	get_random_bytes(&rand, 1);
+	printk("get_random_bytes %d\n", rand);
+	sysctl_uxchain_v2 = rand % 2;
+}
+#endif
 
 void __init sched_init(void)
 {
@@ -7516,6 +7549,9 @@ void __init sched_init(void)
 		init_cfs_rq(&rq->cfs);
 		init_rt_rq(&rq->rt);
 		init_dl_rq(&rq->dl);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+		ux_init_rq_data(rq);
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);
@@ -7613,6 +7649,10 @@ void __init sched_init(void)
 	psi_init();
 
 	init_uclamp();
+
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+	set_random_uxchain_v2();
+#endif
 
 	scheduler_running = 1;
 }

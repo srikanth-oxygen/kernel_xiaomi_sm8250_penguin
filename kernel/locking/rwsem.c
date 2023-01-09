@@ -30,6 +30,12 @@
 
 #include "rwsem.h"
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+#include <linux/mm.h>
+#include <linux/sched.h>
+#include <../sched/sched.h>
+#endif
 /*
  * The least significant 3 bits of the owner value has the following
  * meanings when set.
@@ -294,6 +300,9 @@ static inline void rwsem_clear_reader_owned(struct rw_semaphore *sem)
 
 #define RWSEM_MAX_PREEMPT_ALLOWED 3000
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+extern bool test_task_ux(struct task_struct *task);
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 /*
  * Return true if current waiter is added in the front of the rwsem wait list.
  */
@@ -321,11 +330,25 @@ static inline bool rwsem_list_add_per_prio(struct rwsem_waiter *waiter_in,
 		return true;
 	}
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+	if (sysctl_sched_assist_enabled) {
+		if (rwsem_list_add(waiter_in->task, &waiter_in->list, &sem->wait_list, sem)) {
+			return &waiter_in->list == head->next;
+		}
+	}
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
+
 	if (waiter_in->task->prio < DEFAULT_PRIO
 		&& sem->m_count < RWSEM_MAX_PREEMPT_ALLOWED) {
 
 		list_for_each(pos, head) {
 			waiter = list_entry(pos, struct rwsem_waiter, list);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+			if (sysctl_sched_assist_enabled && waiter_in->task->prio > MAX_RT_PRIO &&
+				test_task_ux(waiter->task)) {
+				continue;
+			}
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 			if (waiter->task->prio > waiter_in->task->prio) {
 				list_add(&waiter_in->list, pos->prev);
 				sem->m_count++;
@@ -1580,6 +1603,10 @@ void __sched down_read(struct rw_semaphore *sem)
 	rwsem_acquire_read(&sem->dep_map, 0, 0, _RET_IP_);
 
 	LOCK_CONTENDED(sem, __down_read_trylock, __down_read);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_down(sem);
+#endif
 }
 EXPORT_SYMBOL(down_read);
 
@@ -1607,6 +1634,11 @@ int __sched down_read_killable(struct rw_semaphore *sem)
 		return -EINTR;
 	}
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_down(sem);
+#endif
+
 	return 0;
 }
 EXPORT_SYMBOL(down_read_killable);
@@ -1618,8 +1650,13 @@ int down_read_trylock(struct rw_semaphore *sem)
 {
 	int ret = __down_read_trylock(sem);
 
-	if (ret == 1)
+	if (ret == 1) {
 		rwsem_acquire_read(&sem->dep_map, 0, 1, _RET_IP_);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+		uxchain_rwsem_down(sem);
+#endif
+	}
 	return ret;
 }
 EXPORT_SYMBOL(down_read_trylock);
@@ -1632,6 +1669,10 @@ void __sched down_write(struct rw_semaphore *sem)
 	might_sleep();
 	rwsem_acquire(&sem->dep_map, 0, 0, _RET_IP_);
 	LOCK_CONTENDED(sem, __down_write_trylock, __down_write);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_down(sem);
+#endif
 }
 EXPORT_SYMBOL(down_write);
 
@@ -1649,6 +1690,10 @@ int __sched down_write_killable(struct rw_semaphore *sem)
 		return -EINTR;
 	}
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_down(sem);
+#endif
 	return 0;
 }
 EXPORT_SYMBOL(down_write_killable);
@@ -1660,8 +1705,13 @@ int down_write_trylock(struct rw_semaphore *sem)
 {
 	int ret = __down_write_trylock(sem);
 
-	if (ret == 1)
+	if (ret == 1) {
 		rwsem_acquire(&sem->dep_map, 0, 1, _RET_IP_);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+		uxchain_rwsem_down(sem);
+#endif
+	}
 
 	return ret;
 }
@@ -1674,6 +1724,10 @@ void up_read(struct rw_semaphore *sem)
 {
 	rwsem_release(&sem->dep_map, 1, _RET_IP_);
 	__up_read(sem);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_up(sem);
+#endif
 }
 EXPORT_SYMBOL(up_read);
 
@@ -1684,6 +1738,10 @@ void up_write(struct rw_semaphore *sem)
 {
 	rwsem_release(&sem->dep_map, 1, _RET_IP_);
 	__up_write(sem);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_up(sem);
+#endif
 }
 EXPORT_SYMBOL(up_write);
 
@@ -1704,6 +1762,10 @@ void down_read_nested(struct rw_semaphore *sem, int subclass)
 	might_sleep();
 	rwsem_acquire_read(&sem->dep_map, subclass, 0, _RET_IP_);
 	LOCK_CONTENDED(sem, __down_read_trylock, __down_read);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_down(sem);
+#endif
 }
 EXPORT_SYMBOL(down_read_nested);
 
@@ -1726,6 +1788,10 @@ void _down_write_nest_lock(struct rw_semaphore *sem, struct lockdep_map *nest)
 	might_sleep();
 	rwsem_acquire_nest(&sem->dep_map, 0, 0, nest, _RET_IP_);
 	LOCK_CONTENDED(sem, __down_write_trylock, __down_write);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_down(sem);
+#endif
 }
 EXPORT_SYMBOL(_down_write_nest_lock);
 
@@ -1734,6 +1800,10 @@ void down_read_non_owner(struct rw_semaphore *sem)
 	might_sleep();
 	__down_read(sem);
 	__rwsem_set_reader_owned(sem, NULL);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_down(sem);
+#endif
 }
 EXPORT_SYMBOL(down_read_non_owner);
 
@@ -1742,6 +1812,10 @@ void down_write_nested(struct rw_semaphore *sem, int subclass)
 	might_sleep();
 	rwsem_acquire(&sem->dep_map, subclass, 0, _RET_IP_);
 	LOCK_CONTENDED(sem, __down_write_trylock, __down_write);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_down(sem);
+#endif
 }
 EXPORT_SYMBOL(down_write_nested);
 
@@ -1756,6 +1830,10 @@ int __sched down_write_killable_nested(struct rw_semaphore *sem, int subclass)
 		return -EINTR;
 	}
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_down(sem);
+#endif
 	return 0;
 }
 EXPORT_SYMBOL(down_write_killable_nested);
@@ -1764,6 +1842,10 @@ void up_read_non_owner(struct rw_semaphore *sem)
 {
 	DEBUG_RWSEMS_WARN_ON(!is_rwsem_reader_owned(sem), sem);
 	__up_read(sem);
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+	uxchain_rwsem_up(sem);
+#endif
 }
 EXPORT_SYMBOL(up_read_non_owner);
 

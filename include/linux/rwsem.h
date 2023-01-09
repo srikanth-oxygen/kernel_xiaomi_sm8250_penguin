@@ -34,14 +34,15 @@
  */
 struct rw_semaphore {
 	atomic_long_t count;
+	atomic_long_t owner;
 #ifdef CONFIG_RWSEM_SPIN_ON_OWNER
 	/*
 	 * Write owner or one of the read owners as well flags regarding
 	 * the current state of the rwsem. Can be used as a speculative
 	 * check to see if the write owner is running on the cpu.
 	 */
-	atomic_long_t owner;
 	struct optimistic_spin_queue osq; /* spinner MCS lock */
+	struct task_struct *owner;
 #endif
 	raw_spinlock_t wait_lock;
 	struct list_head wait_list;
@@ -52,13 +53,29 @@ struct rw_semaphore {
 	/* count for waiters preempt to queue in wait list */
 	long m_count;
 #endif
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+	struct task_struct *ux_dep_task;
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 };
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+//#ifdef CONFIG_UXCHAIN_V2
+extern void uxchain_rwsem_wake(struct task_struct *tsk,
+	struct rw_semaphore *sem);
+extern void uxchain_rwsem_down(struct rw_semaphore *sem);
+extern void uxchain_rwsem_up(struct rw_semaphore *sem);
+#define PREEMPT_DISABLE_RWSEM 3000000
+#endif
 
 /*
  * Setting all bits of the owner field except bit 0 will indicate
  * that the rwsem is writer-owned with an unknown owner.
  */
 #define RWSEM_OWNER_UNKNOWN	(-2L)
+
+
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+#include <linux/sched_assist/sched_assist_rwsem.h>
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 
 /* In all implementations count != 0 means locked */
 static inline int rwsem_is_locked(struct rw_semaphore *sem)
@@ -82,7 +99,11 @@ static inline int rwsem_is_locked(struct rw_semaphore *sem)
 #endif
 
 #ifdef CONFIG_RWSEM_SPIN_ON_OWNER
+#ifndef OPLUS_FEATURE_SCHED_ASSIST
+#define __RWSEM_OPT_INIT(lockname) , .osq = OSQ_LOCK_UNLOCKED, .owner = NULL
+#else /* OPLUS_FEATURE_SCHED_ASSIST */
 #define __RWSEM_OPT_INIT(lockname) , .osq = OSQ_LOCK_UNLOCKED, .owner = ATOMIC_LONG_INIT(0)
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 #else
 #define __RWSEM_OPT_INIT(lockname)
 #endif

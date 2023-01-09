@@ -13,6 +13,13 @@
 #include "walt.h"
 
 #include <trace/events/sched.h>
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+#include <linux/sched.h>
+#include <linux/sched_assist/sched_assist_common.h>
+extern u64 ux_task_load[];
+extern u64 ux_load_ts[];
+#define UX_LOAD_WINDOW 8000000
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 
 const char *task_event_names[] = {"PUT_PREV_TASK", "PICK_NEXT_TASK",
 				  "TASK_WAKE", "TASK_MIGRATE", "TASK_UPDATE",
@@ -556,7 +563,6 @@ static inline u64 freq_policy_load(struct rq *rq)
 	u64 aggr_grp_load = cluster->aggr_grp_load;
 	u64 load, tt_load = 0;
 	struct task_struct *cpu_ksoftirqd = per_cpu(ksoftirqd, cpu_of(rq));
-
 	if (rq->ed_task != NULL) {
 		load = sched_ravg_window;
 		goto done;
@@ -2294,6 +2300,10 @@ static void update_history(struct rq *rq, struct task_struct *p,
 			p->unfilter = max_t(int, 0,
 				p->unfilter - p->ravg.last_win_size);
 done:
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_SCHED_SPREAD)
+	if (p == rq->curr && p == current && event != PUT_PREV_TASK && p->sched_class == &fair_sched_class && p->ld_flag)
+		update_load_flag(p, rq);
+#endif
 	trace_sched_update_history(rq, p, runtime, samples, event);
 }
 

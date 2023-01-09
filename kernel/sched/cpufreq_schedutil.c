@@ -60,6 +60,9 @@ struct sugov_policy {
 
 	bool			limits_changed;
 	bool			need_freq_update;
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) || defined(CONFIG_OPLUS_FEATURE_INPUT_BOOST_V4)
+	unsigned int flags;
+#endif
 };
 
 struct sugov_cpu {
@@ -126,6 +129,10 @@ static bool sugov_should_update_freq(struct sugov_policy *sg_policy, u64 time)
 	 * to the separate rate limits.
 	 */
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+	if (sg_policy->flags & SCHED_CPUFREQ_BOOST)
+		return true;
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 	delta_ns = time - sg_policy->last_freq_update_time;
 	return delta_ns >= sg_policy->min_rate_limit_ns;
 }
@@ -146,6 +153,10 @@ static bool sugov_up_down_rate_limit(struct sugov_policy *sg_policy, u64 time,
 
 	delta_ns = time - sg_policy->last_freq_update_time;
 
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+	if (sg_policy->flags & SCHED_CPUFREQ_BOOST)
+		return false;
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 	if (next_freq > sg_policy->next_freq &&
 	    delta_ns < sg_policy->up_rate_delay_ns)
 			return true;

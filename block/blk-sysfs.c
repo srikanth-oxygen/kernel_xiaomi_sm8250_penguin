@@ -802,6 +802,9 @@ static struct attribute *default_attrs[] = {
 	&queue_ohm_inflight_entry.attr,
 #endif /* OPLUS_FEATURE_HEALTHINFO */
 
+#if defined(OPLUS_FEATURE_SCHED_ASSIST) && defined(CONFIG_OPLUS_FEATURE_UXIO_FIRST)
+	&queue_bg_max_depth_entry.attr,
+#endif
 	&queue_random_entry.attr,
 	&queue_poll_entry.attr,
 	&queue_wc_entry.attr,

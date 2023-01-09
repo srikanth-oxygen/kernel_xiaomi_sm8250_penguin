@@ -1262,7 +1262,9 @@ EXPORT_SYMBOL_GPL(__get_task_comm);
  * These functions flushes out all traces of the currently running executable
  * so that a new one can be started
  */
-
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+extern void sched_assist_target_comm(struct task_struct *task);
+#endif /* OPLUS_FEATURE_SCHED_ASSIST */
 void __set_task_comm(struct task_struct *tsk, const char *buf, bool exec)
 {
 
@@ -1288,6 +1290,9 @@ void __set_task_comm(struct task_struct *tsk, const char *buf, bool exec)
 #endif
 	trace_task_rename(tsk, buf);
 	strlcpy(tsk->comm, buf, sizeof(tsk->comm));
+#ifdef OPLUS_FEATURE_SCHED_ASSIST
+	sched_assist_target_comm(tsk);
+#endif
 #ifdef CONFIG_OPLUS_FEATURE_IM
 	im_wmi(tsk);
 #endif
